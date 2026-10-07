@@ -10,7 +10,7 @@ const html = (s, img) => `<!doctype html><html dir="rtl" lang="he"><head><meta c
 @font-face{font-family:H;font-weight:400;src:url(data:font/ttf;base64,${H4})}
 @font-face{font-family:H;font-weight:700;src:url(data:font/ttf;base64,${H7})}
 *{margin:0;padding:0}body{width:1080px;height:1350px;background:#070707;overflow:hidden;position:relative;font-family:H}
-.bg{position:absolute;inset:-20px;${img ? `background:url(data:image/jpeg;base64,${img}) center/cover;filter:grayscale(1) contrast(1.25) brightness(.4) blur(1.2px)` : 'background:radial-gradient(ellipse at 50% 45%,#1c1c1c 0%,#050505 75%)'}}
+.bg{position:absolute;inset:-20px;${img ? `background:url(data:image/jpeg;base64,${img}) center/cover;filter:grayscale(1) contrast(1.25) brightness(.55) blur(.6px)` : 'background:radial-gradient(ellipse at 50% 45%,#1c1c1c 0%,#050505 75%)'}}
 .vig{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 50%,rgba(0,0,0,0) 35%,rgba(0,0,0,.8) 100%)}
 .grain{position:absolute;inset:0;opacity:.28;mix-blend-mode:overlay}
 .c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 100px}
