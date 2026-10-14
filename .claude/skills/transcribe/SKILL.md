@@ -6,10 +6,10 @@ description: Transcribe a YouTube/TikTok/Instagram Reels/Shorts link or a local 
 # תמלול סרטון
 
 ## שלב 1: תמלול גולמי
-הרץ מתיקיית הפרויקט:
+הרץ משורש הריפו:
 
 ```
-python transcribe.py "<לינק או נתיב לקובץ>"
+python transcriber/transcribe.py "<לינק או נתיב לקובץ>"
 ```
 
 - ברירת מחדל: זיהוי שפה אוטומטי. בעברית נטען המודל `ivrit-ai/whisper-large-v3-turbo-ct2` (מאומן במיוחד לעברית), בשאר השפות `large-v3-turbo`.
@@ -17,10 +17,10 @@ python transcribe.py "<לינק או נתיב לקובץ>"
 - סרטון ארוך: הרץ ברקע ועקוב אחרי הפלט.
 - אם ההורדה נכשלה (סרטון פרטי, דורש התחברות): עדכן את yt-dlp עם `pip install -U yt-dlp` ונסה שוב פעם אחת. אם עדיין נכשל, בקש מהמשתמש לשלוח קובץ.
 
-בסוף נוצרים `output/<שם>/raw.txt` ו-`raw_timestamps.txt`.
+בסוף נוצרים `transcriber/output/<שם>/raw.txt` ו-`raw_timestamps.txt`.
 
 ## שלב 2: סידור
-קרא את `raw.txt` (ואת `raw_timestamps.txt` כדי לזהות הפסקות ומעברים) וכתוב `output/<שם>/transcript.md`:
+קרא את `raw.txt` (ואת `raw_timestamps.txt` כדי לזהות הפסקות ומעברים) וכתוב `transcriber/output/<שם>/transcript.md`:
 
 ```
 # <כותרת הסרטון>
