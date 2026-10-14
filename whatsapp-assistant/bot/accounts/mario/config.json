@@ -10,7 +10,7 @@
     "Manager"
   ],
   "workdir": "",
-  "model": "sonnet",
+  "model": "opus",
   "groupModel": "sonnet",
   "whitelist": [],
   "ownerNumber": "",
