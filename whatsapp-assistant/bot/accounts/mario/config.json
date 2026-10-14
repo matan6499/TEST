@@ -37,5 +37,6 @@
     "paymentLink": "",
     "summaryTime": "21:00",
     "by": "מאור"
-  }
+  },
+  "lockRestricted": true
 }

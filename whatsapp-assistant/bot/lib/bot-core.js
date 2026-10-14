@@ -102,6 +102,8 @@ export function normalizeConfig(input = {}) {
   // if config.json is hand-edited.
   let permissionMode = PERMISSION_MODES.has(requestedMode) ? requestedMode : DEFAULT_CONFIG.permissionMode;
   if ((publicMode || groupPublicMode) && permissionMode !== 'plan') permissionMode = 'plan';
+  // lockRestricted pins the account to chat-only, whatever the dashboard or setup asks.
+  if (raw.lockRestricted === true) permissionMode = 'plan';
   return {
     ...raw,
     agentName: String(raw.agentName ?? DEFAULT_CONFIG.agentName).trim() || DEFAULT_CONFIG.agentName,
@@ -135,6 +137,15 @@ export function applySetupMode(input, { mode, chatJid = '', ownJid = '' } = {}) 
   const ownNumber = normalizePhone(userPart(ownJid));
   if (!ownNumber) throw new Error('מספר WhatsApp המחובר אינו זמין');
 
+  // Re-running setup must never widen access: an account already in restricted chat
+  // mode stays without tools, and a public one stays public (it is restricted anyway).
+  const wasRestricted = next.permissionMode === 'plan';
+  const wasPublic = next.publicMode === true && wasRestricted;
+  const finish = (result) => {
+    if (wasRestricted) result.permissionMode = 'plan';
+    if (wasPublic) result.publicMode = true;
+    return result;
+  };
   next.allowAllLegacyGroups = false;
   next.publicMode = false;
   next.groupPublicMode = false;
@@ -147,7 +158,7 @@ export function applySetupMode(input, { mode, chatJid = '', ownJid = '' } = {}) 
     next.groupMode = chatJid ? 'always' : 'off';
     next.permissionMode = 'bypassPermissions';
     next.onboardingComplete = true;
-    return next;
+    return finish(next);
   }
 
   if (next.ownerNumber === ownNumber) {
@@ -162,7 +173,7 @@ export function applySetupMode(input, { mode, chatJid = '', ownJid = '' } = {}) 
   next.onboardingComplete = Boolean(next.ownerNumber);
 
   if (mode === 'group-bot' && !chatJid) throw new Error('בחר קבוצה');
-  return next;
+  return finish(next);
 }
 
 export function setAllowedGroup(input, { jid, enabled } = {}) {

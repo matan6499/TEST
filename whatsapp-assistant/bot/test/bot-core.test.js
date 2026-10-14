@@ -623,3 +623,20 @@ test('name without a tag, and replies to the bot, are soft triggers', async () =
   assert.equal(named.envelope.softTrigger, 'name');
   assert.equal(routeMessage({ msg: message({ remoteJid: GROUP, participant, text: 'יש לי משהו' }), config: cfg, ownJid: OWN }).reason, 'mention-required');
 });
+
+test('re-running setup never gives tools to a restricted account', () => {
+  const restricted = { ownerNumber: '972511111111', permissionMode: 'plan', publicMode: true };
+  const next = applySetupMode(restricted, { mode: 'separate-number', ownJid: OWN });
+  assert.equal(next.permissionMode, 'plan');
+  assert.equal(next.publicMode, true);
+  assert.equal(applySetupMode({ ...restricted, publicMode: false }, { mode: 'one-number', ownJid: OWN }).permissionMode, 'plan');
+  // an unrestricted account keeps the original behavior
+  assert.equal(applySetupMode({ ownerNumber: '972511111111' }, { mode: 'separate-number', ownJid: OWN }).permissionMode, 'bypassPermissions');
+});
+
+test('lockRestricted pins chat-only mode against any requested permission', () => {
+  for (const permissionMode of ['bypassPermissions', 'acceptEdits', 'auto', 'manual']) {
+    assert.equal(validateConfig({ lockRestricted: true, permissionMode }).permissionMode, 'plan');
+  }
+  assert.equal(applySetupMode({ ownerNumber: '972511111111', lockRestricted: true, permissionMode: 'bypassPermissions' }, { mode: 'separate-number', ownJid: OWN }).permissionMode, 'plan');
+});
