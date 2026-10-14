@@ -52,6 +52,7 @@ import { loadStudio, saveExample, addPref, studioPrompt, SCRIPT_CUES } from './l
 import { loadSelfEdit, saveSelfEdit, prepareEdit, applyEdit, revertTo, discardEdit, selfEditPrompt } from './lib/selfedit.js';
 import { loadArchive, searchArchive, rangeArchive, archivePrompt } from './lib/archive.js';
 import { loadMeetings, newMeeting, openMeetingFor, meetingsPrompt, replyPrompt } from './lib/meetings.js';
+import { loadOrders, addOrder, setOrderStatus, formatOrder, formatSummary, customerOrdersPrompt, ownerOrdersPrompt } from './lib/orders.js';
 import { PRICES, loadLedger, recordOpenAI, recordClaude, setBudget, costSummary, dueAlerts, costsPrompt } from './lib/costs.js';
 import { OutboundGuard } from './lib/antiban.js';
 import { loadMembers, rememberMember, rememberAlias, membersPrompt, mentionsFor } from './lib/mentions.js';
@@ -85,7 +86,7 @@ const IMAGE_DAILY_LIMIT = 30;
 const VISION_DAILY_LIMIT = 60;
 const SEARCH_DAILY_LIMIT = 40;
 const SEARCH_USAGE_PATH = path.join(BASE_DIR, 'search-usage.json');
-const PUBLIC_ACTIONS = new Set(['web_search', 'fetch_url', 'poll', 'remember', 'forget', 'birthday', 'archive_search', 'archive_range', 'quiet']);
+const PUBLIC_ACTIONS = new Set(['web_search', 'fetch_url', 'poll', 'remember', 'forget', 'birthday', 'archive_search', 'archive_range', 'quiet', 'order']);
 // "Moshe, stay out of it until we close this": no joining in and no reactions in that group
 // until someone calls him by name or tags him, or the time runs out.
 const QUIET_PATH = path.join(BASE_DIR, 'quiet.json');
@@ -142,6 +143,11 @@ function saveStudio() { try { writeJsonAtomic(STUDIO_PATH, studio); } catch (e) 
 const IGWATCH_PATH = path.join(BASE_DIR, 'igwatch.json');
 const OUTBOX_PATH = path.join(BASE_DIR, 'outbox.json');
 let meetings = loadMeetings(MEETINGS_PATH);
+const ORDERS_PATH = path.join(BASE_DIR, 'orders.json');
+const ORDERS_STATE_PATH = path.join(BASE_DIR, 'orders-state.json');
+let orders = loadOrders(ORDERS_PATH);
+function saveOrders() { writeJsonAtomic(ORDERS_PATH, orders); }
+const ordersCfg = () => (config.orders && typeof config.orders === 'object' ? config.orders : {});
 function saveMeetings() { try { writeJsonAtomic(MEETINGS_PATH, meetings.slice(-200)); } catch (e) { log('meetings:', e.message); } }
 let ledger = loadLedger(LEDGER_PATH);
 let modelOverride = null; // { model, until } after a Claude plan limit, so the bot keeps answering
@@ -563,7 +569,10 @@ function systemFor(chatJid = '', owner = false, prompt = '') {
     if (SCRIPT_CUES.test(prompt)) lastScriptTalk.set(chatJid, Date.now());
     studioPart = `\n\n${studioPrompt(studio)}${studio.todayIdeas?.date === todayYmd() ? `\n\nהרעיונות ששלחת לבעלים הבוקר (כשהוא אומר מספר, זה הרעיון):\n${studio.todayIdeas.text}` : ''}`;
   }
-  return studioPart + `${getSystemAppend()}\n\n${reminderPrompt(reminders.filter(r => r.chatJid === chatJid))}${chatJid.endsWith('@g.us') ? `\n\n${membersPrompt(groupMembers[chatJid], groupParticipants(chatJid), ownJids())}${(() => { const a = loadArchive(ARCHIVES_DIR, chatJid); return a ? `\n\n${archivePrompt(a)}` : ''; })()}` : ''}${openaiKey() ? `\n\n${searchPrompt({ remaining: usageLeft(SEARCH_USAGE_PATH, SEARCH_DAILY_LIMIT) })}` : ''}\n\n${memoryPrompt(botMemory, { owner, chatJid })}${chatJid.endsWith('@g.us') ? `\n\nכשמבקשים ממך לשתוק, לא להתערב או "לא לענות עד ש...": [[ACT {"a":"quiet","hours":3}]] (שעות לפי ההקשר, עד 24) ואשר בכמה מילים. מאז תענה רק כשקוראים לך בשם או מתייגים אותך.` : ''}${chatJid.endsWith('@g.us') ? `\n\nסקר בקבוצה (כשמבקשים סקר או "מי בא"): [[ACT {"a":"poll","question":"שאלה","options":["אפשרות 1","אפשרות 2"],"multi":false}]] עד 12 אפשרויות.` : ''}${owner ? `\n\n${actionsPrompt({ hasGoogle: hasCalendar(config) || !!(config.googleScriptUrl && config.googleScriptKey), hasMail: config.googleMail === true, groups: allowedGroupNames(), isGroup: chatJid.endsWith('@g.us'), groupsRoster: allGroupsRoster() })}${openaiKey() && feature('imageGen') ? `\n${imagesPrompt({ remaining: imagesLeftToday(), hasPhoto: !!lastOwnerPhoto.get(chatJid) })}` : ''}\n\n${costsPrompt(ledger, todayYmd())}\n\n${meetingsPrompt(meetings, (j) => (cachedGroupMetadata(j)?.subject || groupRoster.get(j)?.subject) || j)}${selfEditOn() && !chatJid.endsWith('@g.us') ? `\n\n${selfEditPrompt(selfEdit)}` : ''}${feature('quotes') ? `\n\n${quotePrompt({ sender: config.quoteSender || config.ownerName || '[שם ופרטי העסק]', vatRate: Number(config.vatRate) || 0, today: formatLocal(Date.now()).slice(0, 10).split('-').reverse().join('.') })}` : ''}` : ''}`;
+  const customerOrders = feature('orders') && !owner && !chatJid.endsWith('@g.us')
+    ? `\n\n${customerOrdersPrompt({ price: Number(ordersCfg().price) || 0, paymentLink: String(ordersCfg().paymentLink || ''), by: String(ordersCfg().by || config.ownerName || 'הבעלים'), today: todayYmd(), mine: orders.filter(o => o.chatJid === chatJid).slice(-5) })}`
+    : '';
+  return studioPart + customerOrders + `${getSystemAppend()}\n\n${reminderPrompt(reminders.filter(r => r.chatJid === chatJid))}${chatJid.endsWith('@g.us') ? `\n\n${membersPrompt(groupMembers[chatJid], groupParticipants(chatJid), ownJids())}${(() => { const a = loadArchive(ARCHIVES_DIR, chatJid); return a ? `\n\n${archivePrompt(a)}` : ''; })()}` : ''}${openaiKey() ? `\n\n${searchPrompt({ remaining: usageLeft(SEARCH_USAGE_PATH, SEARCH_DAILY_LIMIT) })}` : ''}\n\n${memoryPrompt(botMemory, { owner, chatJid })}${chatJid.endsWith('@g.us') ? `\n\nכשמבקשים ממך לשתוק, לא להתערב או "לא לענות עד ש...": [[ACT {"a":"quiet","hours":3}]] (שעות לפי ההקשר, עד 24) ואשר בכמה מילים. מאז תענה רק כשקוראים לך בשם או מתייגים אותך.` : ''}${chatJid.endsWith('@g.us') ? `\n\nסקר בקבוצה (כשמבקשים סקר או "מי בא"): [[ACT {"a":"poll","question":"שאלה","options":["אפשרות 1","אפשרות 2"],"multi":false}]] עד 12 אפשרויות.` : ''}${owner ? `\n\n${actionsPrompt({ hasGoogle: hasCalendar(config) || !!(config.googleScriptUrl && config.googleScriptKey), hasMail: config.googleMail === true, groups: allowedGroupNames(), isGroup: chatJid.endsWith('@g.us'), groupsRoster: allGroupsRoster() })}${openaiKey() && feature('imageGen') ? `\n${imagesPrompt({ remaining: imagesLeftToday(), hasPhoto: !!lastOwnerPhoto.get(chatJid) })}` : ''}\n\n${costsPrompt(ledger, todayYmd())}\n\n${meetingsPrompt(meetings, (j) => (cachedGroupMetadata(j)?.subject || groupRoster.get(j)?.subject) || j)}${selfEditOn() && !chatJid.endsWith('@g.us') ? `\n\n${selfEditPrompt(selfEdit)}` : ''}${feature('orders') ? `\n\n${ownerOrdersPrompt(orders)}` : ''}${feature('quotes') ? `\n\n${quotePrompt({ sender: config.quoteSender || config.ownerName || '[שם ופרטי העסק]', vatRate: Number(config.vatRate) || 0, today: formatLocal(Date.now()).slice(0, 10).split('-').reverse().join('.') })}` : ''}` : ''}`;
 }
 
 // Claude's plan limit (shared with the owner's own Claude Code use) used to take the bot
@@ -952,6 +961,23 @@ ${hasGoogle ? `הפעל: cal_list מ-${today}T00:00 עד סוף היום, ו-mai
 }
 setInterval(() => { maybeSendBriefing().catch(e => log('briefing:', e.message)); }, 60_000).unref();
 
+// ---------- daily greeting-orders summary ----------
+async function maybeSendOrdersSummary() {
+  const at = String(ordersCfg().summaryTime || '21:00');
+  if (!feature('orders') || !/^\d{2}:\d{2}$/.test(at) || !sock || state.status !== 'connected' || !config.ownerNumber) return;
+  const nowLocal = formatLocal(Date.now());
+  const today = nowLocal.slice(0, 10);
+  const hm = nowLocal.slice(11, 16);
+  if (hm < at) return;
+  let last = '';
+  try { last = JSON.parse(fs.readFileSync(ORDERS_STATE_PATH, 'utf8')).lastDate || ''; } catch (_) {}
+  if (last === today) return;
+  writeJsonAtomic(ORDERS_STATE_PATH, { lastDate: today });
+  const summary = formatSummary(orders, today);
+  if (summary) { await sendToOwner(summary); log('📋 orders summary sent'); }
+}
+setInterval(() => { maybeSendOrdersSummary().catch(e => log('orders summary:', e.message)); }, 60_000).unref();
+
 // ---------- daily scheduled messages: Torah thought, Shabbat times ----------
 const dayInfoCache = new Map();
 async function getDayInfo(ymd) {
@@ -1338,6 +1364,28 @@ async function runAction(act, turnStartedAt, ctx = {}) {
       if (!m) return { error: 'לא מצאתי את הפגישה' };
       m.status = 'cancelled'; saveMeetings();
       return { cancelled: true };
+    }
+    if (act.a === 'order') {
+      if (!feature('orders') || String(ctx.chatJid).endsWith('@g.us')) return { error: 'הזמנות רק בפרטי' };
+      const r = addOrder(orders, act, { chatJid: ctx.chatJid, today: todayYmd() });
+      if (r.error) return { error: r.error, missing: r.missing };
+      orders = r.orders; saveOrders(); log('🎬 order', r.order.id);
+      // The order is saved either way; the owner card is best effort.
+      try { await sendToOwner(`🆕 ${formatOrder(r.order)}\n\nכשמשלמים: "שולם ${r.order.id}"`); } catch (e) { log('🎬 owner notify:', e.message); }
+      return { saved: true, id: r.order.id, price: Number(ordersCfg().price) || undefined, paymentLink: ordersCfg().paymentLink || undefined };
+    }
+    if (act.a === 'order_status' || act.a === 'order_list') {
+      if (!ctx.owner) return { error: 'אין הרשאה' };
+      if (act.a === 'order_list') return { summary: formatSummary(orders, todayYmd()) || 'אין הזמנות פתוחות' };
+      const r = setOrderStatus(orders, act.id, act.status);
+      if (r.error) return { error: r.error };
+      orders = r.orders; saveOrders(); log('🎬 order', r.order.id, r.order.status);
+      let customerNotified = false;
+      if (r.order.status === 'paid' && r.previous !== 'paid') {
+        try { await sendTracked(r.order.chatJid, { text: `✅ התשלום על הברכה ל${r.order.recipient} התקבל. נכנסת לתור הצילומים!` }); customerNotified = true; }
+        catch (e) { log('🎬 customer notify:', e.message); }
+      }
+      return { saved: true, id: r.order.id, status: r.order.status, customerNotified };
     }
     if (act.a === 'budget') {
       if (!ctx.owner) return { error: 'אין הרשאה' };
